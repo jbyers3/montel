@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Montell standalone AWS observability backend
+Parameters:
+  Mode:
+    Type: String
+    Default: demo
+    AllowedValues: [demo, live]
+  ConfigSecretArn:
+    Type: String
+    Default: ''
+    Description: ARN of an existing Secrets Manager JSON configuration (required for live mode)
+Rules:
+  LiveRequiresSecret:
+    RuleCondition: !Equals [!Ref Mode, live]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ConfigSecretArn, '']]
+        AssertDescription: Live mode requires a configuration secret ARN.
+Conditions:
+  Live: !Equals [!Ref Mode, live]
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 256
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref TelemetryTable
+        MONTELL_MODE: !Ref Mode
+Resources:
+  TelemetryTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      SSESpecification:
+        SSEEnabled: true
+  MontellApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: v1
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+  Collector:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: montell.aws_backend.collect_handler
+      Timeout: 240
+      ReservedConcurrentExecutions: 1
+      Environment:
+        Variables:
+          CONFIG_SECRET_ARN: !Ref ConfigSecretArn
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref TelemetryTable
+        - !If
+          - Live
+          - Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref ConfigSecretArn
+              - Effect: Allow
+                Action: cloudwatch:GetMetricStatistics
+                Resource: '*'
+          - !Ref AWS::NoValue
+      Events:
+        Poll:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+  Query:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: montell.aws_backend.api_handler
+      Timeout: 20
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TelemetryTable
+      Events:
+        Signals:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MontellApi
+            Path: /api/signals
+            Method: get
+        Status:
+          Type: Api
+          Properties:
+            RestApiId: !Ref MontellApi
+            Path: /api/collectors
+            Method: get
+Outputs:
+  ApiUrl:
+    Value: !Sub 'https://${MontellApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1'
+  CollectorFunction:
+    Value: !Ref Collector

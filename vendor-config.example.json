@@ -1,0 +1,9 @@
+{
+  "CIPHERTRUST": {"enabled": false, "base_url": "https://example.invalid", "path": "/approved-endpoint", "application": "demo"},
+  "NORTON": {"enabled": false, "base_url": "https://example.invalid", "path": "/approved-endpoint"},
+  "CYBERARK": {"enabled": false, "base_url": "https://example.invalid", "path": "/approved-endpoint"},
+  "DYNATRACE": {"enabled": false, "base_url": "https://example.invalid", "path": "/approved-endpoint"},
+  "SQLSERVER": {"enabled": false, "base_url": "https://example.invalid", "path": "/approved-gateway"},
+  "TLS": {"enabled": false, "host": "example.com", "port": 443},
+  "CLOUDWATCH": {"enabled": false, "application": "demo", "metrics": [{"namespace": "AWS/EC2", "name": "CPUUtilization", "resource": "demo-instance", "dimensions": [{"Name": "InstanceId", "Value": "i-REPLACE"}], "warning_above": 70, "critical_above": 90}]}
+}
